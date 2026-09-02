@@ -72,14 +72,19 @@ folder (no admin rights needed, everything stays on D:):
   because that is the only Windows build published. Server and worker run in one
   process (`MODE=standalone`).
 
-  **Licence caveat (verified 2026-09-02, v1.801.0):** the server, UI and API work
-  without a key (the launcher provisions the flow fine), but the **worker refuses to
-  run any job** until a valid Enterprise licence key is set in Superadmin settings
-  (`workers require a valid license key`). Windmill's docs list "Windows Native
+  **Two caveats (verified 2026-09-02, v1.801.0):**
+  1. The Windows exe does **not embed the web UI**: `/`, `/user/login` and every
+     page return 404; only `/api/*` works. The browser tab the launcher opens is
+     therefore blank. The frontend bundle is simply not compiled into the Windows
+     build, so this is not a configuration problem.
+  2. The API and provisioning work without a key, but the **worker refuses to run
+     any job** until a valid Enterprise licence key is set via the API/Superadmin
+     settings (`workers require a valid license key`). Windmill's docs list "Windows Native
   Workers" as a Self-Hosted Enterprise feature; there is no Community build for
-  Windows. Options: a one-month trial key from https://www.windmill.dev/pricing, or
-  run the free Community edition somewhere Linux-based (the Mac stack, WSL, a VM or
-  a VPS). This PC has neither Docker nor WSL and no admin rights to add them.
+  Windows. Realistic options: run the free Community edition somewhere Linux-based
+  (the Mac stack, a VPS, or WSL/Docker if admin rights ever appear) and point this
+  PC at it, or drop Windmill on Windows and drive the pipeline scripts directly.
+  A trial key would unlock the worker but still leaves no UI on this machine.
 - `tools\pwsh\` (~106 MB) - portable PowerShell 7. The Windmill Windows worker only
   runs PowerShell steps through `pwsh.exe`, not Windows PowerShell 5.1.
 - `tools\uv\` (~20 MB) - `uv`, which Windmill uses to install Python step
