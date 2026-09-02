@@ -13,9 +13,21 @@ set "WM_URL=http://127.0.0.1:8000"
 set "PY=C:\Users\kamal\tools\python\python.exe"
 title AutoFlow
 
-rem ---- 1. first run: fetch Windmill, PowerShell 7 and uv ---------------------
+rem ---- 1. PostgreSQL (shared with the NEPSE database) -----------------------
+"%PGDIR%\pgsql\bin\pg_ctl.exe" -D "%PGDIR%\data" status >nul 2>&1
+if errorlevel 1 (
+  echo Starting PostgreSQL...
+  "%PGDIR%\pgsql\bin\pg_ctl.exe" -D "%PGDIR%\data" -l "%PGDIR%\logs\postgres.log" -w start
+  if errorlevel 1 (
+    echo PostgreSQL failed to start. See %PGDIR%\logs\postgres.log
+    pause
+    exit /b 1
+  )
+)
+
+rem ---- 2. first run: fetch Windmill, PowerShell 7 and uv ---------------------
 if not exist "%WM%\windmill-ee.exe" (
-  echo Windmill is not installed yet. Running one-time setup ^(about 2 GB of downloads^)...
+  echo Windmill is not installed yet. Running one-time setup ^(about 600 MB of downloads^)...
   powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\setup-windmill.ps1"
   if errorlevel 1 (
     echo.
@@ -27,18 +39,6 @@ if not exist "%WM%\windmill-ee.exe" (
 if not exist "%ROOT%\tools\uv\uv.exe" (
   echo uv is missing. Running setup to fetch it...
   powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\setup-windmill.ps1"
-)
-
-rem ---- 2. PostgreSQL (shared with the NEPSE database) -----------------------
-"%PGDIR%\pgsql\bin\pg_ctl.exe" -D "%PGDIR%\data" status >nul 2>&1
-if errorlevel 1 (
-  echo Starting PostgreSQL...
-  "%PGDIR%\pgsql\bin\pg_ctl.exe" -D "%PGDIR%\data" -l "%PGDIR%\logs\postgres.log" -w start
-  if errorlevel 1 (
-    echo PostgreSQL failed to start. See %PGDIR%\logs\postgres.log
-    pause
-    exit /b 1
-  )
 )
 
 rem ---- 3. Windmill (skip if it is already up) --------------------------------
@@ -70,6 +70,7 @@ cd /d "%WM%"
 start "AutoFlow - Windmill" /min cmd /c ""%WM%\windmill-ee.exe" >> "%WM%\logs\windmill.log" 2>&1"
 
 rem First start runs database migrations, which can take a few minutes.
+rem (ping is used as a 1 s sleep because timeout.exe refuses to run without a console stdin.)
 set /a tries=0
 :wait
 set /a tries+=1
@@ -87,7 +88,7 @@ if %tries% geq 300 (
   exit /b 1
 )
 if %tries%==1 echo   waiting for %WM_URL% ...
-timeout /t 1 >nul
+ping -n 2 127.0.0.1 >nul
 goto wait
 
 rem ---- 4. flows: create/update over the API (safe to repeat) -----------------
@@ -107,5 +108,5 @@ rem ---- 5. open the UI --------------------------------------------------------
 start "" "http://localhost:8000"
 echo AutoFlow is running at http://localhost:8000
 echo First login: admin@windmill.dev / changeme  (change it after signing in)
-timeout /t 6 >nul
+ping -n 7 127.0.0.1 >nul
 exit /b 0

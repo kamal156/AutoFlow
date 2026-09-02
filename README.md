@@ -67,11 +67,19 @@ PostgreSQL in `D:\PostgresLocal` (database `windmill`, alongside `nepse_market`)
 **First double-click** runs `scripts\setup-windmill.ps1`, which downloads into this
 folder (no admin rights needed, everything stays on D:):
 
-- `windmill\windmill-ee.exe` (~1.9 GB) - the native Windows Windmill binary from
+- `windmill\windmill-ee.exe` (~466 MB) - the native Windows Windmill binary from
   https://github.com/windmill-labs/windmill/releases. It is the Enterprise build
-  because that is the only Windows build published; without a licence key it runs
-  with Community features, which is all AutoFlow needs. Server and worker run in one
+  because that is the only Windows build published. Server and worker run in one
   process (`MODE=standalone`).
+
+  **Licence caveat (verified 2026-09-02, v1.801.0):** the server, UI and API work
+  without a key (the launcher provisions the flow fine), but the **worker refuses to
+  run any job** until a valid Enterprise licence key is set in Superadmin settings
+  (`workers require a valid license key`). Windmill's docs list "Windows Native
+  Workers" as a Self-Hosted Enterprise feature; there is no Community build for
+  Windows. Options: a one-month trial key from https://www.windmill.dev/pricing, or
+  run the free Community edition somewhere Linux-based (the Mac stack, WSL, a VM or
+  a VPS). This PC has neither Docker nor WSL and no admin rights to add them.
 - `tools\pwsh\` (~106 MB) - portable PowerShell 7. The Windmill Windows worker only
   runs PowerShell steps through `pwsh.exe`, not Windows PowerShell 5.1.
 - `tools\uv\` (~20 MB) - `uv`, which Windmill uses to install Python step
@@ -87,7 +95,7 @@ The launcher puts these on the worker's PATH so jobs can call them directly:
 `claude` (`npm-global`), `node`, `ffmpeg`, `python`, `uv`, `psql`, `pwsh`. Job scratch
 space is redirected to `windmill\tmp` to keep it off the full C: drive.
 
-Optional, not fetched: `windmill_duckdb_ffi_internal.dll` (~466 MB) from the same
+Optional, not fetched: `windmill_duckdb_ffi_internal.dll` (~30 MB) from the same
 release page, only needed for DuckDB scripts. Drop it next to the exe if you use them.
 
 ## Running on the Mac (Docker)
@@ -141,9 +149,9 @@ Things that will bite you:
   history is gone; the next run re-seeds and posts nothing.
 - **The first run after enabling the schedule posts nothing** - by design, so deploying
   doesn't dump the whole feed into the channel.
-- **Windows Python steps are not yet exercised.** `PYTHON_PATH`/`UV_PATH` are set by
-  `AutoFlow.bat`; if a Python step fails on the Windows worker, `windmill\logs\windmill.log`
-  is where the answer is.
+- **Windows jobs need a licence key first** (see the caveat above). `PYTHON_PATH`/
+  `UV_PATH` are set by `AutoFlow.bat`; if a Python step fails on the Windows worker
+  once a key is in place, `windmill\logs\windmill.log` is where the answer is.
 
 ## Phase 1: the research job (Windows)
 

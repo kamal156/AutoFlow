@@ -12,7 +12,7 @@
   Idempotent - re-running skips anything already in place.
 
   Sources (official release pages):
-    https://github.com/windmill-labs/windmill/releases   (windmill-ee.exe, ~1.9 GB)
+    https://github.com/windmill-labs/windmill/releases   (windmill-ee.exe, ~466 MB)
     https://github.com/PowerShell/PowerShell/releases    (PowerShell-*-win-x64.zip, ~106 MB)
     https://github.com/astral-sh/uv/releases             (uv-x86_64-pc-windows-msvc.zip, ~20 MB)
 #>
@@ -53,7 +53,7 @@ if (Test-Path $wmExe) {
     Write-Host "Windmill already present: $wmExe" -ForegroundColor Green
 } else {
     $free = (Get-PSDrive -Name D).Free
-    if ($free -lt 4GB) { throw "D: has less than 4 GB free; Windmill needs ~2 GB plus scratch space." }
+    if ($free -lt 2GB) { throw "D: has less than 2 GB free; Windmill needs ~0.5 GB plus scratch space." }
     Get-File "https://github.com/windmill-labs/windmill/releases/download/$WindmillVersion/windmill-ee.exe" $wmExe
 }
 $ver = & $wmExe version 2>&1 | Select-Object -First 1
@@ -95,12 +95,17 @@ if (-not (Test-Path $psql)) { throw "Local PostgreSQL not found at $pgDir" }
 & $pgCtl -D (Join-Path $pgDir 'data') status *> $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Starting PostgreSQL..."
-    & $pgCtl -D (Join-Path $pgDir 'data') -l (Join-Path $pgDir 'logs\postgres.log') -w start | Out-Null
+    # Via cmd: postgres.exe inherits pg_ctl's stdout, so piping this in PowerShell
+    # (e.g. "| Out-Null") would block until the server exits. cmd only waits for pg_ctl.
+    & cmd /c ('"' + $pgCtl + '" -D "' + (Join-Path $pgDir 'data') + '" -l "' + (Join-Path $pgDir 'logs\postgres.log') + '" -w start >nul 2>&1')
+    if ($LASTEXITCODE -ne 0) { throw "PostgreSQL failed to start; see $pgDir\logs\postgres.log" }
 }
 $env:PGPASSWORD = (Get-Content (Join-Path $pgDir '.pgpassword') -Raw).Trim()
 $exists = & $psql -h localhost -U postgres -d postgres -tAc "select 1 from pg_database where datname='windmill'"
+if ($LASTEXITCODE -ne 0) { throw "could not query PostgreSQL (psql exit $LASTEXITCODE); see $pgDir\logs\postgres.log" }
 if ("$exists".Trim() -ne '1') {
     & $psql -h localhost -U postgres -d postgres -c 'CREATE DATABASE windmill' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "CREATE DATABASE windmill failed (psql exit $LASTEXITCODE)" }
     Write-Host "Created database 'windmill'." -ForegroundColor Green
 } else {
     Write-Host "Database 'windmill' already exists." -ForegroundColor Green
