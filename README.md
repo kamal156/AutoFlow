@@ -35,7 +35,7 @@ docker compose down -v && colima delete -f
 Colima does **not** start at login, so after a reboot:
 
 ```bash
-colima start && cd /Users/kamal/Desktop/windmill && docker compose up -d
+colima start && cd /Users/kamal/Desktop/AutoFlow && docker compose up -d
 ```
 
 | Task | Command |

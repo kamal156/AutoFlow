@@ -5,6 +5,12 @@
 # If you ever move this to a public VPS, put it behind Caddy or a reverse proxy
 # with a real domain and set BASE_URL to https://... before exposing anything.
 
+# Pinned so the Compose project name stays "windmill" regardless of what the
+# containing directory is called. Compose defaults this to the folder name, so
+# renaming the folder would otherwise point at a fresh, empty set of volumes
+# and orphan the existing database.
+name: windmill
+
 services:
   db:
     image: postgres:16-alpine
