@@ -1,0 +1,103 @@
+# Windmill — self-hosted, local (macOS / Docker Desktop or Colima)
+# UI: http://localhost:8000   default login: admin@windmill.dev / changeme
+#
+# No Caddy/TLS here on purpose: this binds to localhost only.
+# If you ever move this to a public VPS, put it behind Caddy or a reverse proxy
+# with a real domain and set BASE_URL to https://... before exposing anything.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: windmill
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d windmill"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Uncomment only if you want to poke at the DB from your Mac directly.
+    # ports: ["5433:5432"]
+
+  windmill_server:
+    image: ghcr.io/windmill-labs/windmill:${WM_VERSION}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WM_PORT}:8000"
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db/windmill?sslmode=disable
+      - MODE=server
+      - BASE_URL=${BASE_URL}
+      - BASE_INTERNAL_URL=http://windmill_server:8000
+      - RUST_LOG=info
+    volumes:
+      - worker_logs:/tmp/windmill/logs
+
+  # Runs your Python/TS steps. One replica: this host has 8GB RAM total, so a
+  # second worker would just fight the VM for memory. Bump replicas if you move
+  # this to a bigger machine.
+  windmill_worker:
+    image: ghcr.io/windmill-labs/windmill:${WM_VERSION}
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1536M
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db/windmill?sslmode=disable
+      - MODE=worker
+      - WORKER_GROUP=default
+      - NUM_WORKERS=1
+      - BASE_INTERNAL_URL=http://windmill_server:8000
+      - RUST_LOG=info
+    volumes:
+      # Named volume so pip/uv installs survive restarts — first run of a new
+      # dependency is slow, every run after that is cached.
+      - worker_dependency_cache:/tmp/windmill/cache
+      - worker_logs:/tmp/windmill/logs
+
+  # Lightweight worker for "native"/http steps — keeps quick steps from queueing
+  # behind a slow pandas job on the default group.
+  windmill_worker_native:
+    image: ghcr.io/windmill-labs/windmill:${WM_VERSION}
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db/windmill?sslmode=disable
+      - MODE=worker
+      - WORKER_GROUP=native
+      - NUM_WORKERS=4
+      - SLEEP_QUEUE=200
+      - BASE_INTERNAL_URL=http://windmill_server:8000
+      - RUST_LOG=info
+    volumes:
+      - worker_logs:/tmp/windmill/logs
+
+# Editor autocomplete (windmill-lsp) is intentionally not included: the browser
+# reaches it over /ws/*, which needs the Caddy reverse proxy from the official
+# stack. The web editor works fine without it, minus type hints.
+
+volumes:
+  db_data:
+  worker_dependency_cache:
+  worker_logs:
