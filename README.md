@@ -1,36 +1,96 @@
-# Windmill — self-hosted automation, running locally
+# AutoFlow
 
-Canvas flow builder + Python steps, on Docker. Set up 2026-08-27.
+Automates the Suno -> YouTube/Facebook content pipeline on a self-hosted **Windmill**
+instance. Two human touchpoints remain: generating the Suno tracks, and approving the
+final render.
 
-**UI:** http://localhost:8000 · **Login:** `admin@windmill.dev` / `changeme`
-**Workspace:** `main` · **Flow:** `u/admin/rss_to_discord`
+One repo (`github.com/kamal156/AutoFlow`), two hosts:
 
----
+| Host | Windmill runs as | Start it with |
+|---|---|---|
+| **Windows PC** (`D:\Claude Projects\AutoFlow`) | native `windmill-ee.exe`, standalone, on the local PostgreSQL | the **AutoFlow** desktop icon / `AutoFlow.bat` |
+| **Mac** (`/Users/kamal/Desktop/AutoFlow`) | Docker (`docker-compose.yml`) via Colima | `colima start && docker compose up -d` |
 
-## ⚠️ Do these three things first
+Both hosts expose the same UI at http://localhost:8000 (default login
+`admin@windmill.dev` / `changeme` - change it after the first sign-in) and are
+provisioned from the same code with `provision.py`.
 
-1. **Change the admin password.** UI → bottom-left `User (admin)` → set a real password.
-   Until you do, anything that can reach port 8000 can run code on your Mac.
-2. **Paste your Discord webhook.** UI → `Variables` → `u/admin/discord_webhook` → replace
-   `REPLACE_ME_with_your_discord_webhook_url` with the real URL. It's stored encrypted.
-   (Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy URL.)
-3. **Enable the schedule.** UI → `Schedules` → `u/admin/rss_to_discord` → toggle on.
-   It's hourly (`0 0 * * * *`, Asia/Kathmandu) and deliberately shipped **off**.
+Full plan: `C:\Users\kamal\.claude\plans\splendid-imagining-crayon.md`.
 
-## ⚠️ Disk space
+## Pipeline stages
 
-This machine had 6.7 GB free before install and has **~440 MB free now**. The stack costs
-about 4.8 GB (Docker images + the Colima VM disk). macOS gets unstable below ~1 GB free.
+| Stage | Who | Status |
+|---|---|---|
+| 1. Research -> longtail -> thumbnail -> metadata | Auto (`scripts\new-job.ps1`) | **Phase 1 - built** |
+| 2. Generate 6-8 Suno tracks | **You** | manual by design |
+| 3. Stitch audio + image -> MP4 | Auto (EverLoop CLI) | **Phase 2 - built** |
+| 4. Approve the render | **You** | Phase 3 |
+| 5. Upload to YouTube + Facebook | Auto (Windmill) | Phase 3-5 |
 
-Free space before you do much else. To reclaim everything this added:
+## What's in here
 
-```bash
-docker compose down -v && colima delete -f
-```
+| File | Purpose |
+|---|---|
+| `AutoFlow.bat` | **Windows launcher.** Starts PostgreSQL + Windmill, runs `provision.py`, opens the UI |
+| `scripts/setup-windmill.ps1` | Windows first-run: downloads `windmill-ee.exe`, portable PowerShell 7 and `uv`; creates the `windmill` database |
+| `scripts/provision.bat` | Windows: re-run `provision.py` by hand (e.g. after changing the admin password) |
+| `scripts/stop-autoflow.bat` | Windows: stop Windmill (PostgreSQL stays up for the NEPSE database) |
+| `scripts/create-desktop-shortcut.ps1` | Windows: (re)create the desktop icon |
+| `scripts/make-icon.js` | Windows: redraw `assets/autoflow.ico` |
+| `scripts/new-job.ps1`, `scripts/validate-job.js`, `prompts/`, `schemas/`, `config/` | Phase 1 research job (see below) |
+| `docker-compose.yml` | **Mac stack:** Postgres + Windmill server + 1 worker + 1 native worker |
+| `.env` | Mac only: pinned `WM_VERSION`, generated Postgres password, port. **Not in git.** |
+| `provision.py` | Creates the workspace, variable, flow and schedule over the API. Stdlib only, idempotent |
+| `flow/fetch_new_items.py` | Flow step `a` - reads an RSS feed, returns only unseen items |
+| `flow/post_to_discord.py` | Flow step `c` - posts one item to Discord, inside the loop |
 
----
+`provision.py` is idempotent - edit the `.py` files in `flow/`, re-run it, and the
+deployed flow updates in place. The flow is built through the API rather than clicked
+together in the browser so it survives a rebuild on either host.
 
-## Daily operation
+## Running on the Windows PC
+
+| Action | How |
+|---|---|
+| Start | double-click the **AutoFlow** desktop icon (or `AutoFlow.bat`) |
+| Open the UI | it opens automatically at http://localhost:8000 |
+| First login | `admin@windmill.dev` / `changeme` - change it after signing in |
+| Re-provision the flows | `scripts\provision.bat` (set `WM_PASSWORD` first if you changed the password) |
+| Stop Windmill | `scripts\stop-autoflow.bat` |
+| Logs | `windmill\logs\windmill.log` |
+| Recreate the icon | `powershell -File scripts\create-desktop-shortcut.ps1` |
+| Redraw the icon | `node scripts\make-icon.js` |
+
+Nothing is exposed to the network: Windmill binds to 127.0.0.1:8000 and uses the local
+PostgreSQL in `D:\PostgresLocal` (database `windmill`, alongside `nepse_market`).
+
+**First double-click** runs `scripts\setup-windmill.ps1`, which downloads into this
+folder (no admin rights needed, everything stays on D:):
+
+- `windmill\windmill-ee.exe` (~1.9 GB) - the native Windows Windmill binary from
+  https://github.com/windmill-labs/windmill/releases. It is the Enterprise build
+  because that is the only Windows build published; without a licence key it runs
+  with Community features, which is all AutoFlow needs. Server and worker run in one
+  process (`MODE=standalone`).
+- `tools\pwsh\` (~106 MB) - portable PowerShell 7. The Windmill Windows worker only
+  runs PowerShell steps through `pwsh.exe`, not Windows PowerShell 5.1.
+- `tools\uv\` (~20 MB) - `uv`, which Windmill uses to install Python step
+  dependencies (`feedparser`, `requests`, `wmill`) into its cache. The interpreter
+  itself is the portable CPython in `C:\Users\kamal\tools\python` (`PYTHON_PATH`).
+
+The first start then applies Windmill's database migrations, which can take a few
+minutes; the launcher waits up to five minutes, then runs `provision.py` and opens the
+browser. The launcher window stays visible so a download or migration in progress
+does not look like a hang.
+
+The launcher puts these on the worker's PATH so jobs can call them directly:
+`claude` (`npm-global`), `node`, `ffmpeg`, `python`, `uv`, `psql`, `pwsh`. Job scratch
+space is redirected to `windmill\tmp` to keep it off the full C: drive.
+
+Optional, not fetched: `windmill_duckdb_ffi_internal.dll` (~466 MB) from the same
+release page, only needed for DuckDB scripts. Drop it next to the exe if you use them.
+
+## Running on the Mac (Docker)
 
 Colima does **not** start at login, so after a reboot:
 
@@ -46,51 +106,138 @@ colima start && cd /Users/kamal/Desktop/AutoFlow && docker compose up -d
 | Recreate the flow from code | `python3 provision.py` |
 | Auto-start Colima at login | `brew services start colima` |
 
-## What's in here
+The Mac had ~440 MB free after install (the stack costs about 4.8 GB in Docker images
+plus the Colima VM disk); macOS gets unstable below ~1 GB free. To reclaim everything:
+`docker compose down -v && colima delete -f`.
 
-| File | Purpose |
-|---|---|
-| `docker-compose.yml` | Postgres + Windmill server + 1 worker + 1 native worker |
-| `.env` | Pinned version, generated Postgres password, port. **Not in git.** |
-| `flow/fetch_new_items.py` | Step `a` — reads the feed, returns only unseen items |
-| `flow/post_to_discord.py` | Step `c` — posts one item, inside the loop |
-| `provision.py` | Creates the workspace, variable, flow and schedule over the API |
+`WM_VERSION` in `.env` is pinned (1.365.0 at install). Upgrade deliberately with
+`docker compose pull && docker compose up -d`. The `windmill-lsp` editor autocomplete
+service is left out on purpose (it needs the Caddy `/ws` proxy from the official stack).
 
-`provision.py` is idempotent — edit the `.py` files in `flow/`, re-run it, and the deployed
-flow updates. That's the reason the flow was built through the API rather than clicked
-together in the browser: it survives a rebuild.
+## The `rss_to_discord` flow
 
-## How the flow works
+The first flow, brought over from the Mac. It is a template for the pipeline flows:
 
 ```
 Input (feed_url, max_items)
-  └─ a: fetch new items      Python — feedparser, dedupes via wmill state
+  └─ a: fetch new items      Python - feedparser, dedupes via wmill state
       └─ b: for each item    loop over results.a
-          └─ c: post to discord    retries 3× exponential
+          └─ c: post to discord    retries 3x exponential
 ```
 
-**Verified working:** a full run completed successfully (returned `[]` — the seeding run),
-and a forced run confirmed the loop passes items into step `c` and retries on failure.
+After provisioning, do these in the UI (both hosts):
 
-## Things that will bite you
+1. **Change the admin password.** Bottom-left `User (admin)` -> set a real password.
+2. **Paste your Discord webhook.** `Variables` -> `u/admin/discord_webhook` -> replace
+   `REPLACE_ME_with_your_discord_webhook_url`. It is stored encrypted.
+3. **Enable the schedule.** `Schedules` -> `u/admin/rss_to_discord` -> toggle on.
+   Hourly (`0 0 * * * *`, Asia/Kathmandu), deliberately shipped **off**.
+
+Things that will bite you:
 
 - **The first run of any new dependency is slow** (~30 s while `feedparser` installs).
-  It's cached in a named volume after that. Don't mistake it for a hang.
-- **State is per flow-step path.** Rename step `a` or move the flow and the dedupe history
-  is gone, so the next run re-seeds and posts nothing. That's recoverable, just confusing.
-- **The first run after enabling the schedule posts nothing** — by design, so deploying
-  doesn't dump the whole HN front page into your channel.
-- **Outbound requests come from the worker container, not your Mac.** If a fetch fails,
-  `docker compose logs windmill_worker` is where the answer is.
-- **No TLS, bound to 127.0.0.1.** Fine locally. If this ever moves to a VPS, add the Caddy
-  service from the official stack and set `BASE_URL` to a real https:// domain first.
-- **`WM_VERSION` is pinned** to 1.365.0. The UI will nag about a newer release; upgrade
-  deliberately with `docker compose pull && docker compose up -d`.
-- **No editor autocomplete.** The `windmill-lsp` service needs Caddy's `/ws` proxy, so it
-  was left out. The code editor works, minus type hints.
+  It is cached after that. Don't mistake it for a hang.
+- **State is per flow-step path.** Rename step `a` or move the flow and the dedupe
+  history is gone; the next run re-seeds and posts nothing.
+- **The first run after enabling the schedule posts nothing** - by design, so deploying
+  doesn't dump the whole feed into the channel.
+- **Windows Python steps are not yet exercised.** `PYTHON_PATH`/`UV_PATH` are set by
+  `AutoFlow.bat`; if a Python step fails on the Windows worker, `windmill\logs\windmill.log`
+  is where the answer is.
 
-## Reusing this for something else
+## Phase 1: the research job (Windows)
 
-The flow is a template. To point it at a different job, either edit `flow/*.py` and re-run
-`provision.py`, or ignore the flow entirely — for a single existing script, `+ Script` in the
-UI with a `main()` entry point and a schedule attached is less machinery than the canvas.
+Phase 1 needs the Claude Code **CLI** (the desktop app is a separate thing and does not
+provide `claude -p`), plus the Nexlev MCP server registered locally. The Nexlev
+connector attached to your claude.ai account is *not* visible to the CLI.
+
+Steps 1-3 are **done**. Only step 4 is outstanding.
+
+```powershell
+# 1. DONE - CLI installed with npm's global prefix on D: (C: is nearly full).
+#    The --allow-scripts flag lets the postinstall run; without it npm warns and
+#    skips it. The install worked regardless, since claude.exe ships in the package.
+npm config set prefix "D:\Claude Projects\AutoFlow\npm-global"
+npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
+
+# 2. DONE - npm-global appended to the User PATH.
+#    Already-open terminals will not see it; open a NEW one.
+
+# 3. DONE - Nexlev registered at *user* scope, so it resolves from any directory.
+#    (Plain `claude mcp add` writes local config tied to the current folder, which
+#    breaks as soon as a script runs from somewhere else.)
+claude mcp add --scope user --transport http nexlev https://prod.dashboard.nexlev.io/api/claude-mcp
+
+# 4. TODO - two interactive logins. Neither can be scripted; both open a browser.
+#    Open a NEW terminal and run `claude`, then:
+#
+#      a) /login  - signs the CLI in to your Claude account. This is SEPARATE
+#                   from the desktop app's session; the CLI starts logged out
+#                   even though the desktop app is signed in.
+#      b) /mcp    - authenticate nexlev via OAuth.
+#
+#    Headless runs reuse both stored tokens afterwards.
+```
+
+### Do not trust `claude mcp list`
+
+It shows your claude.ai account connectors as `claude.ai NexLev ... Connected`, but
+**headless `claude -p` does not load them** - they belong to interactive and desktop
+sessions. That is why a separately registered `nexlev` server exists above, and why it
+needs its own `/mcp` OAuth even though the claude.ai connector is already authorised.
+
+Verify functionally instead. This must print `FOUND`, not `NO_TOOL`:
+
+```powershell
+"Call the youtube_search tool with query 'lofi'. If no such tool exists, reply exactly NO_TOOL." | claude -p --output-format json --allowedTools "mcp__nexlev"
+```
+
+The `/login` step is confirmed by `"is_error": false` from:
+
+```powershell
+"Reply with exactly: PLUMBING OK" | claude -p --output-format json
+```
+
+Status as of 2026-08-27: `/login` **done** (plumbing check passes). The `nexlev`
+server's `/mcp` OAuth is **still outstanding** - the probe above returns `NO_TOOL`.
+
+`new-job.ps1` does not depend on PATH: if `claude` is not found there it falls back to
+`npm-global\claude.cmd` directly, so it works from an already-open shell too.
+
+### Usage
+
+```powershell
+.\scripts\new-job.ps1 -SeedKeyword "lofi study beats"
+```
+
+Creates `jobs\<timestamp>-<slug>\` containing:
+
+```
+job.json      all publish metadata (YT long/short, FB feed/reel)
+thumb.jpg     generated thumbnail
+state.json    {"stage": "awaiting_audio"}
+audio\        <- drop your 6-8 Suno tracks here
+render\        output from the EverLoop CLI (Phase 2)
+_prompt.md    the resolved prompt that was sent
+_session.json raw Claude session log, for debugging a bad run
+```
+
+Add `-DryRun` to render the prompt without calling Claude.
+
+### Design notes
+
+**One fat agentic call, never many thin ones.** A single `claude -p` invocation does
+research, longtail selection, thumbnail inspiration, thumbnail generation and metadata
+writing. Each invocation reloads context from scratch and draws on subscription usage
+limits, so six small calls cost far more than one large one.
+
+**Validation is deliberately strict.** `validate-job.js` enforces the platform limits
+that would otherwise fail at publish time - after a render has already burned an hour.
+It also requires `research.outlier_references` to be non-empty, which is the cheapest
+available proof that the agent actually queried Nexlev rather than inventing a keyword
+from its own priors.
+
+**Billing caveat.** `claude -p` currently draws from your Claude subscription's usage
+limits rather than API credits. Anthropic announced a change on 2026-06-15 that would
+have moved programmatic usage onto separately-billed Agent SDK credits, then paused it.
+If that reverses, the fallback is setting `ANTHROPIC_API_KEY` - no code change needed.

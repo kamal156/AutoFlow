@@ -1,3 +1,20 @@
+# --- shared ---
 .env
 __pycache__/
 *.pyc
+*.log
+logs/
+node_modules/
+
+# --- Windows host (D:\Claude Projects\AutoFlow) ---
+# Job working data - renders, audio, generated thumbnails
+jobs/
+# Local Windmill host - binary, logs, job scratch space (fetched by scripts/setup-windmill.ps1)
+windmill/
+# Portable runtimes fetched by scripts/setup-windmill.ps1 (pwsh, uv)
+tools/
+# Claude Code CLI installed with npm prefix here (~240 MB)
+npm-global/
+# Legacy n8n runtime (pre-Windmill)
+.n8n/
+binary-data/

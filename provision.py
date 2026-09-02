@@ -6,6 +6,9 @@ Stdlib only — no pip install needed on the host.
 
     python3 provision.py                  # against http://localhost:8000
     WM_PASSWORD=yournewpassword python3 provision.py
+
+On the Windows PC, AutoFlow.bat runs this automatically once Windmill is up;
+scripts/provision.bat re-runs it by hand with the portable CPython.
 """
 import json
 import os
@@ -45,7 +48,8 @@ def call(method, path, body=None, token=None, raw=False):
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()
     except urllib.error.URLError as e:
-        sys.exit(f"cannot reach {BASE}: {e.reason}\nIs the stack up?  docker compose ps")
+        sys.exit(f"cannot reach {BASE}: {e.reason}\nIs Windmill running?  "
+                 "Windows: double-click the AutoFlow icon.  Mac: docker compose ps")
 
 
 def main():
