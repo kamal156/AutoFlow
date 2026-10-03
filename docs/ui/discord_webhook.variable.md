@@ -1,0 +1,3 @@
+INFO: secret Discord webhook URL that flow u/admin/rss_to_discord (step c, "post to discord") posts to. Stored encrypted. provision.py creates it with a REPLACE_ME placeholder and never overwrites the value.
+
+MANUAL: (1) Discord: channel settings > Integrations > Webhooks > New Webhook > Copy Webhook URL. (2) Here: Edit > paste the URL into Value > Save. (3) If posts start failing with 401/404, the webhook was deleted or regenerated in Discord, so paste the new URL. To rotate it, regenerate it in Discord and paste again. Keep the URL here, never in flow code or flow inputs: anyone holding it can post to the channel.

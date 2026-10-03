@@ -6,6 +6,10 @@ Stdlib only — no pip install needed on the host.
 
     python3 provision.py                  # against http://localhost:8000
     WM_PASSWORD=yournewpassword python3 provision.py
+    WM_TOKEN=<token from Account settings -> Tokens> python3 provision.py
+
+The Info + Manual text shown in the UI for the flow, variable and schedule lives in
+docs/ui/*.md and is pushed on every run - edit it there, not in the UI.
 
 On the Windows PC, AutoFlow.bat runs this automatically once Windmill is up;
 scripts/provision.bat re-runs it by hand with the portable CPython.
@@ -25,6 +29,12 @@ TIMEZONE = os.environ.get("WM_TIMEZONE", "Asia/Kathmandu")
 FLOW_PATH = "u/admin/rss_to_discord"
 VAR_PATH = "u/admin/discord_webhook"
 HERE = pathlib.Path(__file__).parent
+SCHEDULE_SUMMARY = "Hourly RSS -> Discord (keep off until the webhook is set)"
+
+
+def doc(name):
+    """Info + Manual text shown in the Windmill UI, kept in docs/ui/."""
+    return (HERE / "docs" / "ui" / name).read_text(encoding="utf-8").strip()
 
 
 def call(method, path, body=None, token=None, raw=False):
@@ -52,15 +62,25 @@ def call(method, path, body=None, token=None, raw=False):
                  "Windows: double-click the AutoFlow icon.  Mac: docker compose ps")
 
 
-def main():
+def login():
+    # A token (Account settings -> Tokens) skips the password entirely.
+    token = os.environ.get("WM_TOKEN")
+    if token:
+        print("using WM_TOKEN")
+        return token.strip()
     status, token = call("POST", "/api/auth/login", {"email": EMAIL, "password": PASSWORD}, raw=True)
     if status != 200:
         sys.exit(
             f"login failed ({status}): {token}\n"
-            "If you already changed the admin password, pass it: WM_PASSWORD=... python3 provision.py"
+            "If you already changed the admin password, pass it: WM_PASSWORD=... python3 provision.py\n"
+            "or pass an API token instead: WM_TOKEN=... python3 provision.py"
         )
-    token = token.strip().strip('"')
     print("logged in as", EMAIL)
+    return token.strip().strip('"')
+
+
+def main():
+    token = login()
 
     status, workspaces = call("GET", "/api/workspaces/list", token=token)
     if status != 200:
@@ -78,15 +98,20 @@ def main():
 
     # 1. Secret variable, created empty-ish so the flow fails loudly rather than
     #    silently posting nowhere. You paste the real webhook in the UI.
+    var_doc = doc("discord_webhook.variable.md")
     status, _ = call("GET", f"/api/w/{ws}/variables/get/{VAR_PATH}", token=token)
     if status == 200:
-        print("variable exists, leaving it alone:", VAR_PATH)
+        # Description only - leaving "value" out keeps the pasted webhook intact.
+        status, resp = call("POST", f"/api/w/{ws}/variables/update/{VAR_PATH}",
+                            {"description": var_doc}, token=token)
+        print("variable exists, value left alone, description refreshed:" if status == 200
+              else f"variable description update failed ({status}): {resp}", VAR_PATH)
     else:
         status, resp = call("POST", f"/api/w/{ws}/variables/create", {
             "path": VAR_PATH,
             "value": "REPLACE_ME_with_your_discord_webhook_url",
             "is_secret": True,
-            "description": "Discord channel webhook used by rss_to_discord",
+            "description": var_doc,
         }, token=token)
         print("variable created" if status in (200, 201) else f"variable create failed ({status}): {resp}")
 
@@ -158,7 +183,7 @@ def main():
     body = {
         "path": FLOW_PATH,
         "summary": "RSS to Discord",
-        "description": "Checks a feed, posts items it hasn't seen before to a Discord channel.",
+        "description": doc("rss_to_discord.flow.md"),
         "value": value,
         "schema": schema,
     }
@@ -183,10 +208,21 @@ def main():
         "is_flow": True,
         "args": {"feed_url": "https://hnrss.org/frontpage", "max_items": 5},
         "enabled": False,
+        "summary": SCHEDULE_SUMMARY,
+        "description": doc("rss_to_discord.schedule.md"),
     }
     status, resp = call("GET", f"/api/w/{ws}/schedules/get/{FLOW_PATH}", token=token)
     if status == 200:
-        print("schedule already exists, leaving it alone")
+        # Refresh the text only: cron, timezone, args and on/off stay as set in the UI.
+        status, upd = call("POST", f"/api/w/{ws}/schedules/update/{FLOW_PATH}", {
+            "schedule": resp["schedule"],
+            "timezone": resp["timezone"],
+            "args": resp.get("args") or {},
+            "summary": sched["summary"],
+            "description": sched["description"],
+        }, token=token)
+        print("schedule exists, settings left alone, text refreshed" if status == 200
+              else f"schedule text update failed ({status}): {upd}")
     else:
         status, resp = call("POST", f"/api/w/{ws}/schedules/create", sched, token=token)
         print("schedule created (disabled)" if status in (200, 201)
