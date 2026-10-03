@@ -38,6 +38,8 @@ Full plan: `C:\Users\kamal\.claude\plans\splendid-imagining-crayon.md`.
 | `docs/ui/*.md` | The Info + Manual text shown in the Windmill UI for the flow, variable and schedule. `provision.py` pushes it on every run, so edit it here, not in the UI |
 | `flow/fetch_new_items.py` | Flow step `a` - reads an RSS feed, returns only unseen items |
 | `flow/post_to_discord.py` | Flow step `c` - posts one item to Discord, inside the loop |
+| `scripts/open-windmill.bat` | Windows: target of the **Windmill** desktop icon. Starts the WSL stack if it is down, waits for the API, opens http://localhost:8000 |
+| `scripts/create-windmill-shortcut.vbs` | Windows: (re)create that icon - `cscript //nologo scripts\create-windmill-shortcut.vbs` (VBScript, because Quick Heal quarantines files PowerShell creates) |
 | `scripts/provision.bat` | Windows: double-click to re-run `provision.py` with the portable CPython |
 | `scripts/new-job.ps1`, `scripts/validate-job.js`, `prompts/`, `config/` | Phase 1 research job (see below) |
 | `AutoFlow.bat`, `scripts/setup-windmill.ps1`, `scripts/stop-autoflow.bat`, `scripts/create-desktop-shortcut.ps1`, `scripts/make-icon.js`, `assets/` | **Legacy** native-Windows launcher (see the end of this file). Not used by the WSL setup |
@@ -64,6 +66,7 @@ and give it ~30 s.
 
 | Action | Command (from PowerShell / cmd) |
 |---|---|
+| **Open Windmill** | double-click the **Windmill** desktop icon - it starts the stack first if needed (~15 s from stopped) |
 | Status / wake WSL | `wsl -d Ubuntu -u root -e docker ps` |
 | Start the stack | `wsl -d Ubuntu -u root -e sh -c "cd /mnt/d/AutoFlow && docker compose up -d"` |
 | Stop (keeps data) | `wsl -d Ubuntu -u root -e sh -c "cd /mnt/d/AutoFlow && docker compose stop"` |
