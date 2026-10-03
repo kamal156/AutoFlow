@@ -39,6 +39,7 @@ Full plan: `C:\Users\kamal\.claude\plans\splendid-imagining-crayon.md`.
 | `flow/fetch_new_items.py` | Flow step `a` - reads an RSS feed, returns only unseen items |
 | `flow/post_to_discord.py` | Flow step `c` - posts one item to Discord, inside the loop |
 | `scripts/open-windmill.bat` | Windows: target of the **Windmill** desktop icon. Starts the WSL stack if it is down, waits for the API, opens http://localhost:8000 |
+| `scripts/keep-wsl-alive.vbs` | Windows: hidden keep-alive session so WSL does not stop Ubuntu (and Windmill) when idle. Started by `open-windmill.bat` |
 | `scripts/create-windmill-shortcut.vbs` | Windows: (re)create that icon - `cscript //nologo scripts\create-windmill-shortcut.vbs` (VBScript, because Quick Heal quarantines files PowerShell creates) |
 | `scripts/provision.bat` | Windows: double-click to re-run `provision.py` with the portable CPython |
 | `scripts/new-job.ps1`, `scripts/validate-job.js`, `prompts/`, `config/` | Phase 1 research job (see below) |
@@ -59,10 +60,16 @@ distro with `get.docker.com`. Docker Desktop is not used; its `docker-desktop` d
 is present but stopped.
 
 **Auto-start.** `/etc/wsl.conf` enables systemd, the `docker` service is enabled, and
-every container has `restart: unless-stopped`. Starting the distro therefore brings
-Windmill back on its own. WSL only starts on demand, though, so after a reboot (or if
-WSL shut the VM down while idle) run any `wsl` command, e.g. the status line below,
-and give it ~30 s.
+every container has `restart: unless-stopped`, so booting the distro brings Windmill
+back on its own.
+
+**WSL stops Ubuntu ~20 s after the last `wsl` session exits** (verified 2026-10-03,
+WSL 3.0.1) and Windmill goes down with it, even though the containers are healthy.
+A one-off `wsl ...` command therefore starts Windmill only for a moment. The desktop
+icon handles this: `scripts/keep-wsl-alive.vbs` starts one hidden
+`flock ... sleep infinity` session that holds the distro up until Windows logs off or
+`wsl --shutdown`. The `flock` makes repeat clicks harmless. If Windmill drops after a
+restart, just double-click the icon again.
 
 | Action | Command (from PowerShell / cmd) |
 |---|---|
