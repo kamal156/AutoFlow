@@ -40,7 +40,8 @@ Full plan: `C:\Users\kamal\.claude\plans\splendid-imagining-crayon.md`.
 | `flow/post_to_discord.py` | Flow step `c` - posts one item to Discord, inside the loop |
 | `scripts/open-windmill.bat` | Windows: target of the **Windmill** desktop icon. Starts the WSL stack if it is down, waits for the API, opens http://localhost:8000 |
 | `scripts/keep-wsl-alive.vbs` | Windows: hidden keep-alive session so WSL does not stop Ubuntu (and Windmill) when idle. Started by `open-windmill.bat` |
-| `scripts/create-windmill-shortcut.vbs` | Windows: (re)create that icon - `cscript //nologo scripts\create-windmill-shortcut.vbs` (VBScript, because Quick Heal quarantines files PowerShell creates) |
+| `scripts/windmill-at-login.vbs` | Windows: target of the **Windmill (start at login)** Startup entry. Starts the keep-alive and the stack silently - no window, no browser |
+| `scripts/create-windmill-shortcut.vbs` | Windows: (re)create the desktop icon **and** the Startup entry - `cscript //nologo scripts\create-windmill-shortcut.vbs` (VBScript, because Quick Heal quarantines files PowerShell creates) |
 | `scripts/provision.bat` | Windows: double-click to re-run `provision.py` with the portable CPython |
 | `scripts/new-job.ps1`, `scripts/validate-job.js`, `prompts/`, `config/` | Phase 1 research job (see below) |
 | `AutoFlow.bat`, `scripts/setup-windmill.ps1`, `scripts/stop-autoflow.bat`, `scripts/create-desktop-shortcut.ps1`, `scripts/make-icon.js`, `assets/` | **Legacy** native-Windows launcher (see the end of this file). Not used by the WSL setup |
@@ -70,6 +71,11 @@ icon handles this: `scripts/keep-wsl-alive.vbs` starts one hidden
 `flock ... sleep infinity` session that holds the distro up until Windows logs off or
 `wsl --shutdown`. The `flock` makes repeat clicks harmless. If Windmill drops after a
 restart, just double-click the icon again.
+
+**At login** the Startup-folder entry `Windmill (start at login)` runs
+`scripts/windmill-at-login.vbs`, so Windmill is already up (~6 s after login) by the
+time you click the icon. To turn that off, delete the shortcut from `shell:startup`
+(Win+R -> `shell:startup`).
 
 | Action | Command (from PowerShell / cmd) |
 |---|---|
